@@ -27,6 +27,7 @@ import { Badge } from './Badge';
 import { Popup, DisclaimerPopup } from '@/features/popup';
 import { Avatar } from '@/components/avatars/Avatar';
 import { DeleteButton, SendButton } from '@/components/buttons/SendButton';
+import ExpandButton from '@/components/buttons/ExpandButton';
 import { FilePreview } from '@/components/inputs/textInput/components/FilePreview';
 import { CircleDotIcon, SparklesIcon, TrashIcon } from './icons';
 import { CancelButton } from './buttons/CancelButton';
@@ -36,7 +37,7 @@ import { removeLocalStorageChatHistory, getLocalStorageChatflow, setLocalStorage
 import { cloneDeep } from 'lodash';
 import { FollowUpPromptBubble } from '@/components/bubbles/FollowUpPromptBubble';
 import { fetchEventSource, EventStreamContentType } from '@microsoft/fetch-event-source';
-import { ArrowOutwardIcon } from 'filigran-icon';
+import { CloseButton } from '@/components/buttons/CloseButton';
 
 export type FileEvent<T = EventTarget> = {
   target: T;
@@ -138,6 +139,8 @@ type observerConfigType = (accessor: string | boolean | object | MessageType[]) 
 export type observersConfigType = Record<'observeUserInput' | 'observeLoading' | 'observeMessages', observerConfigType>;
 
 export type BotProps = {
+  expanded?: boolean;
+  onExpand?: () => void;
   chatflowid: string;
   apiHost?: string;
   onRequest?: (request: RequestInit) => Promise<void>;
@@ -1799,16 +1802,19 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
                 <span class="px-3 whitespace-pre-wrap font-semibold max-w-full">{props.title}</span>
               </Show>
               <div style={{ flex: 1 }} />
-              <ArrowOutwardIcon onClick={() => {}} />
-              <DeleteButton
-                sendButtonColor={props.bubbleTextColor}
-                type="button"
-                isDisabled={messages().length === 1}
-                class="my-2 ml-2"
-                on:click={clearChat}
-              >
-                <span style={{ 'font-family': 'Poppins, sans-serif' }}>Clear</span>
-              </DeleteButton>
+              <div class="flex justify-between gap-2">
+                <ExpandButton expanded={props.expanded ?? false} on:click={props.onExpand} color={props.bubbleTextColor} type="button" class="w-8" />
+                <DeleteButton
+                  sendButtonColor={props.bubbleTextColor}
+                  type="button"
+                  class="w-8"
+                  isDisabled={messages().length === 1}
+                  on:click={clearChat}
+                >
+                  <span style={{ 'font-family': 'Poppins, sans-serif' }}>Clear</span>
+                </DeleteButton>
+                <CloseButton color={props.bubbleTextColor} class="w-8" on:click={props.closeBot} />
+              </div>
             </div>
           ) : null}
           <div class="flex flex-col w-full h-full justify-start z-0">
