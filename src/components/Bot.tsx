@@ -1799,15 +1799,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
               </Show>
               <div style={{ flex: 1 }} />
               <div>Test Adrien</div>
-              <DeleteButton
-                sendButtonColor={props.bubbleTextColor}
-                type="button"
-                isDisabled={messages().length === 1}
-                class="my-2 ml-2"
-                on:click={clearChat}
-              >
-                <span style={{ 'font-family': 'Poppins, sans-serif' }}>Clear</span>
-              </DeleteButton>
             </div>
           ) : null}
           <div class="flex flex-col w-full h-full justify-start z-0">
