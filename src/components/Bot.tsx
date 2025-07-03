@@ -1798,6 +1798,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
                 <span class="px-3 whitespace-pre-wrap font-semibold max-w-full">{props.title}</span>
               </Show>
               <div style={{ flex: 1 }} />
+              <div>Test Adrien</div>
               <DeleteButton
                 sendButtonColor={props.bubbleTextColor}
                 type="button"
