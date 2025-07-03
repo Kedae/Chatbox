@@ -1,10 +1,8 @@
-import { createEffect, Show, createSignal, onMount, For } from 'solid-js';
+import { createEffect, For, onMount, Show } from 'solid-js';
 import { Avatar } from '../avatars/Avatar';
 import { Marked } from '@ts-stack/markdown';
-import { FeedbackRatingType, sendFeedbackQuery, sendFileDownloadQuery, updateFeedbackQuery } from '@/queries/sendMessageQuery';
+import { sendFileDownloadQuery } from '@/queries/sendMessageQuery';
 import { FileUpload, IAction, MessageType } from '../Bot';
-import { CopyToClipboardButton, ThumbsDownButton, ThumbsUpButton } from '../buttons/FeedbackButtons';
-import FeedbackContentDialog from '../FeedbackContentDialog';
 import { AgentReasoningBubble } from './AgentReasoningBubble';
 import { TickIcon, XIcon } from '../icons';
 import { SourceBubble } from '../bubbles/SourceBubble';
@@ -22,9 +20,7 @@ type Props = {
   avatarSrc?: string;
   backgroundColor?: string;
   textColor?: string;
-  chatFeedbackStatus?: boolean;
   fontSize?: number;
-  feedbackColor?: string;
   isLoading: boolean;
   dateTimeToggle?: DateTimeToggleTheme;
   showAgentMessages?: boolean;
@@ -37,22 +33,11 @@ type Props = {
 const defaultBackgroundColor = '#f7f8ff';
 const defaultTextColor = '#303235';
 const defaultFontSize = 16;
-const defaultFeedbackColor = '#3B81F6';
 
 export const BotBubble = (props: Props) => {
   let botDetailsEl: HTMLDetailsElement | undefined;
 
   Marked.setOptions({ isNoP: true, sanitize: props.renderHTML !== undefined ? !props.renderHTML : true });
-
-  const [rating, setRating] = createSignal('');
-  const [feedbackId, setFeedbackId] = createSignal('');
-  const [showFeedbackContentDialog, setShowFeedbackContentModal] = createSignal(false);
-  const [copiedMessage, setCopiedMessage] = createSignal(false);
-  const [thumbsUpColor, setThumbsUpColor] = createSignal(props.feedbackColor ?? defaultFeedbackColor); // default color
-  const [thumbsDownColor, setThumbsDownColor] = createSignal(props.feedbackColor ?? defaultFeedbackColor); // default color
-
-  // Store a reference to the bot message element for the copyMessageToClipboard function
-  const [botMessageElement, setBotMessageElement] = createSignal<HTMLElement | null>(null);
 
   const setBotMessageRef = (el: HTMLSpanElement) => {
     if (el) {
@@ -83,17 +68,6 @@ export const BotBubble = (props: Props) => {
         link.target = '_blank';
       });
 
-      // Store the element ref for the copy function
-      setBotMessageElement(el);
-
-      if (props.message.rating) {
-        setRating(props.message.rating);
-        if (props.message.rating === 'THUMBS_UP') {
-          setThumbsUpColor('#006400');
-        } else if (props.message.rating === 'THUMBS_DOWN') {
-          setThumbsDownColor('#8B0000');
-        }
-      }
       if (props.fileAnnotations && props.fileAnnotations.length) {
         for (const annotations of props.fileAnnotations) {
           const button = document.createElement('button');
@@ -134,34 +108,6 @@ export const BotBubble = (props: Props) => {
     }
   };
 
-  const copyMessageToClipboard = async () => {
-    try {
-      const text = botMessageElement() ? botMessageElement()?.textContent : '';
-      await navigator.clipboard.writeText(text || '');
-      setCopiedMessage(true);
-      setTimeout(() => {
-        setCopiedMessage(false);
-      }, 2000); // Hide the message after 2 seconds
-    } catch (error) {
-      console.error('Error copying to clipboard:', error);
-    }
-  };
-
-  const saveToLocalStorage = (rating: FeedbackRatingType) => {
-    const chatDetails = localStorage.getItem(`${props.chatflowid}_EXTERNAL`);
-    if (!chatDetails) return;
-    try {
-      const parsedDetails = JSON.parse(chatDetails);
-      const messages: MessageType[] = parsedDetails.chatHistory || [];
-      const message = messages.find((msg) => msg.messageId === props.message.messageId);
-      if (!message) return;
-      message.rating = rating;
-      localStorage.setItem(`${props.chatflowid}_EXTERNAL`, JSON.stringify({ ...parsedDetails, chatHistory: messages }));
-    } catch (e) {
-      return;
-    }
-  };
-
   const isValidURL = (url: string): URL | undefined => {
     try {
       return new URL(url);
@@ -183,83 +129,6 @@ export const BotBubble = (props: Props) => {
       }
     });
     return newSourceDocuments;
-  };
-
-  const onThumbsUpClick = async () => {
-    if (rating() === '') {
-      const body = {
-        chatflowid: props.chatflowid,
-        chatId: props.chatId,
-        messageId: props.message?.messageId as string,
-        rating: 'THUMBS_UP' as FeedbackRatingType,
-        content: '',
-      };
-      const result = await sendFeedbackQuery({
-        chatflowid: props.chatflowid,
-        apiHost: props.apiHost,
-        body,
-        onRequest: props.onRequest,
-      });
-
-      if (result.data) {
-        const data = result.data as any;
-        let id = '';
-        if (data && data.id) id = data.id;
-        setRating('THUMBS_UP');
-        setFeedbackId(id);
-        setShowFeedbackContentModal(true);
-        // update the thumbs up color state
-        setThumbsUpColor('#006400');
-        saveToLocalStorage('THUMBS_UP');
-      }
-    }
-  };
-
-  const onThumbsDownClick = async () => {
-    if (rating() === '') {
-      const body = {
-        chatflowid: props.chatflowid,
-        chatId: props.chatId,
-        messageId: props.message?.messageId as string,
-        rating: 'THUMBS_DOWN' as FeedbackRatingType,
-        content: '',
-      };
-      const result = await sendFeedbackQuery({
-        chatflowid: props.chatflowid,
-        apiHost: props.apiHost,
-        body,
-        onRequest: props.onRequest,
-      });
-
-      if (result.data) {
-        const data = result.data as any;
-        let id = '';
-        if (data && data.id) id = data.id;
-        setRating('THUMBS_DOWN');
-        setFeedbackId(id);
-        setShowFeedbackContentModal(true);
-        // update the thumbs down color state
-        setThumbsDownColor('#8B0000');
-        saveToLocalStorage('THUMBS_DOWN');
-      }
-    }
-  };
-
-  const submitFeedbackContent = async (text: string) => {
-    const body = {
-      content: text,
-    };
-    const result = await updateFeedbackQuery({
-      id: feedbackId(),
-      apiHost: props.apiHost,
-      body,
-      onRequest: props.onRequest,
-    });
-
-    if (result.data) {
-      setFeedbackId('');
-      setShowFeedbackContentModal(false);
-    }
   };
 
   onMount(() => {
@@ -343,49 +212,6 @@ export const BotBubble = (props: Props) => {
         </Show>
       </>
     );
-  };
-
-  const formatDateTime = (dateTimeString: string | undefined, showDate: boolean | undefined, showTime: boolean | undefined) => {
-    if (!dateTimeString) return '';
-
-    try {
-      const date = new Date(dateTimeString);
-
-      // Check if the date is valid
-      if (isNaN(date.getTime())) {
-        console.error('Invalid ISO date string:', dateTimeString);
-        return '';
-      }
-
-      let formatted = '';
-
-      if (showDate) {
-        const dateFormatter = new Intl.DateTimeFormat('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        });
-        const [{ value: month }, , { value: day }, , { value: year }] = dateFormatter.formatToParts(date);
-        formatted = `${month.charAt(0).toUpperCase() + month.slice(1)} ${day}, ${year}`;
-      }
-
-      if (showTime) {
-        const timeFormatter = new Intl.DateTimeFormat('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        });
-        const timeString = timeFormatter.format(date).toLowerCase();
-        formatted = formatted ? `${formatted}, ${timeString}` : timeString;
-      }
-
-      return formatted;
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return '';
-    }
   };
 
   return (
@@ -517,45 +343,6 @@ export const BotBubble = (props: Props) => {
                 }}
               </For>
             </div>
-          </>
-        )}
-      </div>
-      <div>
-        {props.chatFeedbackStatus && props.message.messageId && (
-          <>
-            <div class={`flex items-center px-2 pb-2 ${props.showAvatar ? 'ml-10' : ''}`}>
-              <CopyToClipboardButton feedbackColor={props.feedbackColor} onClick={() => copyMessageToClipboard()} />
-              <Show when={copiedMessage()}>
-                <div class="copied-message" style={{ color: props.feedbackColor ?? defaultFeedbackColor }}>
-                  Copied!
-                </div>
-              </Show>
-              {rating() === '' || rating() === 'THUMBS_UP' ? (
-                <ThumbsUpButton feedbackColor={thumbsUpColor()} isDisabled={rating() === 'THUMBS_UP'} rating={rating()} onClick={onThumbsUpClick} />
-              ) : null}
-              {rating() === '' || rating() === 'THUMBS_DOWN' ? (
-                <ThumbsDownButton
-                  feedbackColor={thumbsDownColor()}
-                  isDisabled={rating() === 'THUMBS_DOWN'}
-                  rating={rating()}
-                  onClick={onThumbsDownClick}
-                />
-              ) : null}
-              <Show when={props.message.dateTime}>
-                <div class="text-sm text-gray-500 ml-2">
-                  {formatDateTime(props.message.dateTime, props?.dateTimeToggle?.date, props?.dateTimeToggle?.time)}
-                </div>
-              </Show>
-            </div>
-            <Show when={showFeedbackContentDialog()}>
-              <FeedbackContentDialog
-                isOpen={showFeedbackContentDialog()}
-                onClose={() => setShowFeedbackContentModal(false)}
-                onSubmit={submitFeedbackContent}
-                backgroundColor={props.backgroundColor}
-                textColor={props.textColor}
-              />
-            </Show>
           </>
         )}
       </div>

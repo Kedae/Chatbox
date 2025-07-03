@@ -24,25 +24,6 @@ export type MessageRequest = BaseRequest & {
   body?: IncomingInput;
 };
 
-export type FeedbackRatingType = 'THUMBS_UP' | 'THUMBS_DOWN';
-
-export type FeedbackInput = {
-  chatId: string;
-  messageId: string;
-  rating: FeedbackRatingType;
-  content?: string;
-};
-
-export type CreateFeedbackRequest = BaseRequest & {
-  chatflowid?: string;
-  body?: FeedbackInput;
-};
-
-export type UpdateFeedbackRequest = BaseRequest & {
-  id: string;
-  body?: Partial<FeedbackInput>;
-};
-
 export type UpsertRequest = BaseRequest & {
   chatflowid: string;
   apiHost?: string;
@@ -61,29 +42,42 @@ export type LeadCaptureRequest = BaseRequest & {
   body: Partial<LeadCaptureInput>;
 };
 
-export const sendFeedbackQuery = ({ chatflowid, apiHost = 'http://localhost:3000', body, onRequest }: CreateFeedbackRequest) =>
-  sendRequest({
-    method: 'POST',
-    url: `${apiHost}/api/v1/feedback/${chatflowid}`,
-    body,
-    onRequest: onRequest,
-  });
-
-export const updateFeedbackQuery = ({ id, apiHost = 'http://localhost:3000', body, onRequest }: UpdateFeedbackRequest) =>
-  sendRequest({
-    method: 'PUT',
-    url: `${apiHost}/api/v1/feedback/${id}`,
-    body,
-    onRequest: onRequest,
-  });
-
-export const sendMessageQuery = ({ chatflowid, apiHost = 'http://localhost:3000', body, onRequest }: MessageRequest) =>
+/** First call to get some configuration about what we can do with the service
+ * Response: {
+ *   flowData: JSON stringified definition of the service
+ *   upload: {
+ *     "isSpeechToTextEnabled": boolean,
+ *     "isImageUploadAllowed": boolean,
+ *     "isRAGFileUploadAllowed": boolean,
+ *     "imgUploadSizeAndTypes": array,
+ *     "fileUploadSizeAndTypes": array
+ *  }
+ * }
+ * @param chatflowid
+ * @param apiHost
+ * @param onRequest
+ */
+export const getChatbotConfig = ({ chatflowid, apiHost = 'http://localhost:3000', onRequest }: MessageRequest) =>
   sendRequest<any>({
-    method: 'POST',
-    url: `${apiHost}/api/v1/prediction/${chatflowid}`,
-    body,
+    method: 'GET',
+    url: `${apiHost}/api/v1/public-chatbotConfig/${chatflowid}`,
     onRequest: onRequest,
   });
+
+/** Health check, is the service alive ?
+ * Response : { isStreaming: true  }
+ * @param chatflowid
+ * @param apiHost
+ * @param onRequest
+ */
+export const isStreamAvailableQuery = ({ chatflowid, apiHost = 'http://localhost:3000', onRequest }: MessageRequest) =>
+  sendRequest<any>({
+    method: 'GET',
+    url: `${apiHost}/api/v1/chatflows-streaming/${chatflowid}`,
+    onRequest: onRequest,
+  });
+
+/* DEPRECATED SECTION */
 
 export const createAttachmentWithFormData = ({ chatflowid, apiHost = 'http://localhost:3000', formData, onRequest }: UpsertRequest) =>
   sendRequest({
@@ -93,31 +87,6 @@ export const createAttachmentWithFormData = ({ chatflowid, apiHost = 'http://loc
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-    onRequest: onRequest,
-  });
-
-export const upsertVectorStoreWithFormData = ({ chatflowid, apiHost = 'http://localhost:3000', formData, onRequest }: UpsertRequest) =>
-  sendRequest({
-    method: 'POST',
-    url: `${apiHost}/api/v1/vector/upsert/${chatflowid}`,
-    formData,
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    onRequest: onRequest,
-  });
-
-export const getChatbotConfig = ({ chatflowid, apiHost = 'http://localhost:3000', onRequest }: MessageRequest) =>
-  sendRequest<any>({
-    method: 'GET',
-    url: `${apiHost}/api/v1/public-chatbotConfig/${chatflowid}`,
-    onRequest: onRequest,
-  });
-
-export const isStreamAvailableQuery = ({ chatflowid, apiHost = 'http://localhost:3000', onRequest }: MessageRequest) =>
-  sendRequest<any>({
-    method: 'GET',
-    url: `${apiHost}/api/v1/chatflows-streaming/${chatflowid}`,
     onRequest: onRequest,
   });
 

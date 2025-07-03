@@ -63,9 +63,6 @@ export const defaultBotProps: BubbleProps = {
         sendMessageSound: false,
         receiveMessageSound: false,
       },
-      feedback: {
-        color: '#303235',
-      },
       dateTimeToggle: {
         date: true,
         time: true,

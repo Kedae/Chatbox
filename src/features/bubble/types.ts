@@ -73,7 +73,6 @@ export type ChatWindowTheme = {
   userMessage?: UserMessageTheme;
   botMessage?: BotMessageTheme;
   textInput?: TextInputTheme;
-  feedback?: FeedbackTheme;
   footer?: FooterTheme;
   sourceDocsTitle?: string;
   poweredByTextColor?: string;

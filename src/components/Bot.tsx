@@ -1,30 +1,14 @@
-import { createSignal, createEffect, For, onMount, Show, mergeProps, on, createMemo } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, mergeProps, on, onMount, Show } from 'solid-js';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  sendMessageQuery,
-  upsertVectorStoreWithFormData,
-  isStreamAvailableQuery,
-  IncomingInput,
-  getChatbotConfig,
-  FeedbackRatingType,
-  createAttachmentWithFormData,
-} from '@/queries/sendMessageQuery';
+import { createAttachmentWithFormData, getChatbotConfig, IncomingInput, isStreamAvailableQuery } from '@/queries/sendMessageQuery';
 import { TextInput } from './inputs/textInput';
 import { GuestBubble } from './bubbles/GuestBubble';
 import { BotBubble } from './bubbles/BotBubble';
 import { LoadingBubble } from './bubbles/LoadingBubble';
 import { StarterPromptBubble } from './bubbles/StarterPromptBubble';
-import {
-  BotMessageTheme,
-  FooterTheme,
-  TextInputTheme,
-  UserMessageTheme,
-  FeedbackTheme,
-  DisclaimerPopUpTheme,
-  DateTimeToggleTheme,
-} from '@/features/bubble/types';
+import { BotMessageTheme, DateTimeToggleTheme, DisclaimerPopUpTheme, FooterTheme, TextInputTheme, UserMessageTheme } from '@/features/bubble/types';
 import { Badge } from './Badge';
-import { Popup, DisclaimerPopup } from '@/features/popup';
+import { DisclaimerPopup, Popup } from '@/features/popup';
 import { Avatar } from '@/components/avatars/Avatar';
 import { DeleteButton, SendButton } from '@/components/buttons/SendButton';
 import ExpandButton from '@/components/buttons/ExpandButton';
@@ -33,10 +17,10 @@ import { CircleDotIcon, SparklesIcon, TrashIcon } from './icons';
 import { CancelButton } from './buttons/CancelButton';
 import { cancelAudioRecording, startAudioRecording, stopAudioRecording } from '@/utils/audioRecording';
 import { LeadCaptureBubble } from '@/components/bubbles/LeadCaptureBubble';
-import { removeLocalStorageChatHistory, getLocalStorageChatflow, setLocalStorageChatflow, setCookie, getCookie } from '@/utils';
+import { getCookie, getLocalStorageChatflow, removeLocalStorageChatHistory, setCookie, setLocalStorageChatflow } from '@/utils';
 import { cloneDeep } from 'lodash';
 import { FollowUpPromptBubble } from '@/components/bubbles/FollowUpPromptBubble';
-import { fetchEventSource, EventStreamContentType } from '@microsoft/fetch-event-source';
+import { EventStreamContentType, fetchEventSource } from '@microsoft/fetch-event-source';
 import { CloseButton } from '@/components/buttons/CloseButton';
 
 export type FileEvent<T = EventTarget> = {
@@ -122,7 +106,6 @@ export type MessageType = {
   agentFlowExecutedData?: any;
   usedTools?: any[];
   action?: IAction | null;
-  rating?: FeedbackRatingType;
   id?: string;
   followUpPrompts?: string;
   dateTime?: string;
@@ -151,7 +134,6 @@ export type BotProps = {
   botMessage?: BotMessageTheme;
   userMessage?: UserMessageTheme;
   textInput?: TextInputTheme;
-  feedback?: FeedbackTheme;
   poweredByTextColor?: string;
   badgeBackgroundColor?: string;
   bubbleBackgroundColor?: string;
@@ -269,50 +251,6 @@ const defaultWelcomeMessage = 'Hi there! How can I help?';
 const defaultBackgroundColor = '#ffffff';
 const defaultTextColor = '#303235';
 const defaultTitleBackgroundColor = '#3B81F6';
-
-/* FeedbackDialog component - for collecting user feedback */
-const FeedbackDialog = (props: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: () => void;
-  feedbackValue: string;
-  setFeedbackValue: (value: string) => void;
-}) => {
-  return (
-    <Show when={props.isOpen}>
-      <div class="fixed inset-0 rounded-lg flex items-center justify-center backdrop-blur-sm z-50" style={{ background: 'rgba(0, 0, 0, 0.4)' }}>
-        <div class="p-6 rounded-lg shadow-lg max-w-md w-full text-center mx-4 font-sans" style={{ background: 'white', color: 'black' }}>
-          <h2 class="text-xl font-semibold mb-4 flex justify-center items-center">Your Feedback</h2>
-
-          <textarea
-            class="w-full p-2 border border-gray-300 rounded-md mb-4"
-            rows={4}
-            placeholder="Please provide your feedback..."
-            value={props.feedbackValue}
-            onInput={(e) => props.setFeedbackValue(e.target.value)}
-          />
-
-          <div class="flex justify-center space-x-4">
-            <button
-              class="font-bold py-2 px-6 rounded focus:outline-none focus:shadow-outline"
-              style={{ background: '#ef4444', color: 'white' }}
-              onClick={props.onClose}
-            >
-              Cancel
-            </button>
-            <button
-              class="font-bold py-2 px-6 rounded focus:outline-none focus:shadow-outline"
-              style={{ background: '#3b82f6', color: 'white' }}
-              onClick={props.onSubmit}
-            >
-              Submit
-            </button>
-          </div>
-        </div>
-      </div>
-    </Show>
-  );
-};
 
 /* FormInputView component - for displaying the form input */
 const FormInputView = (props: {
@@ -477,11 +415,8 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
     { equals: false },
   );
 
-  const [isChatFlowAvailableToStream, setIsChatFlowAvailableToStream] = createSignal(false);
   const [chatId, setChatId] = createSignal('');
-  const [isMessageStopping, setIsMessageStopping] = createSignal(false);
   const [starterPrompts, setStarterPrompts] = createSignal<string[]>([], { equals: false });
-  const [chatFeedbackStatus, setChatFeedbackStatus] = createSignal<boolean>(false);
   const [fullFileUpload, setFullFileUpload] = createSignal<boolean>(false);
   const [uploadsConfig, setUploadsConfig] = createSignal<UploadsConfig>();
   const [leadsConfig, setLeadsConfig] = createSignal<LeadsConfig>();
@@ -489,16 +424,10 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
   const [leadEmail, setLeadEmail] = createSignal('');
   const [disclaimerPopupOpen, setDisclaimerPopupOpen] = createSignal(false);
 
-  const [openFeedbackDialog, setOpenFeedbackDialog] = createSignal(false);
-  const [feedback, setFeedback] = createSignal('');
-  const [pendingActionData, setPendingActionData] = createSignal(null);
-  const [feedbackType, setFeedbackType] = createSignal('');
-
   // start input type
   const [startInputType, setStartInputType] = createSignal('');
   const [formTitle, setFormTitle] = createSignal('');
   const [formDescription, setFormDescription] = createSignal('');
-  const [formInputsData, setFormInputsData] = createSignal({});
   const [formInputParams, setFormInputParams] = createSignal([]);
 
   // drag & drop file input
@@ -598,7 +527,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
       if (allMessages[allMessages.length - 1].type === 'userMessage') return allMessages;
       if (!text) return allMessages;
       allMessages[allMessages.length - 1].message += text;
-      allMessages[allMessages.length - 1].rating = undefined;
       allMessages[allMessages.length - 1].dateTime = new Date().toISOString();
       if (!hasSoundPlayed) {
         playReceiveSound();
@@ -752,18 +680,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
       setChatId(data.chatId);
     }
 
-    // set message id that is needed for feedback
-    if (data.chatMessageId) {
-      setMessages((prevMessages) => {
-        const allMessages = [...cloneDeep(prevMessages)];
-        if (allMessages[allMessages.length - 1].type === 'apiMessage') {
-          allMessages[allMessages.length - 1].messageId = data.chatMessageId;
-        }
-        addChatMessage(allMessages);
-        return allMessages;
-      });
-    }
-
     if (input === '' && data.question) {
       // the response contains the question even if it was in an audio format
       // so if input is empty but the response contains the question, update the user message to show the question
@@ -889,7 +805,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
   };
 
   const abortMessage = () => {
-    setIsMessageStopping(false);
     setMessages((prevMessages) => {
       const allMessages = [...cloneDeep(prevMessages)];
       if (allMessages[allMessages.length - 1].type === 'userMessage') return allMessages;
@@ -939,39 +854,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
               };
             }
           }
-        }
-      }
-    } else if (uploadsConfig()?.isRAGFileUploadAllowed) {
-      const filesWithRAGUploadType = uploadedFiles().filter((file) => file.type === 'file:rag');
-
-      if (filesWithRAGUploadType.length > 0) {
-        const formData = new FormData();
-        for (const file of filesWithRAGUploadType) {
-          formData.append('files', file.file);
-        }
-        formData.append('chatId', chatId());
-
-        const response = await upsertVectorStoreWithFormData({
-          chatflowid: props.chatflowid,
-          apiHost: props.apiHost,
-          formData: formData,
-        });
-
-        if (!response.data) {
-          throw new Error('Unable to upload documents');
-        } else {
-          // delay for vector store to be updated
-          const delay = (delayInms: number) => {
-            return new Promise((resolve) => setTimeout(resolve, delayInms));
-          };
-          await delay(2500); //TODO: check if embeddings can be retrieved using file name as metadata filter
-
-          uploads = uploads.map((upload) => {
-            return {
-              ...upload,
-              type: 'file:rag',
-            };
-          });
         }
       }
     }
@@ -1042,71 +924,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
 
     if (humanInput) body.humanInput = humanInput;
 
-    if (isChatFlowAvailableToStream()) {
-      fetchResponseFromEventStream(props.chatflowid, body);
-    } else {
-      const result = await sendMessageQuery({
-        chatflowid: props.chatflowid,
-        apiHost: props.apiHost,
-        body,
-        onRequest: props.onRequest,
-      });
-
-      if (result.data) {
-        const data = result.data;
-
-        let text = '';
-        if (data.text) text = data.text;
-        else if (data.json) text = JSON.stringify(data.json, null, 2);
-        else text = JSON.stringify(data, null, 2);
-
-        if (data?.chatId) setChatId(data.chatId);
-
-        playReceiveSound();
-
-        setMessages((prevMessages) => {
-          const allMessages = [...cloneDeep(prevMessages)];
-          const newMessage = {
-            message: text,
-            id: data?.chatMessageId,
-            sourceDocuments: data?.sourceDocuments,
-            usedTools: data?.usedTools,
-            fileAnnotations: data?.fileAnnotations,
-            agentReasoning: data?.agentReasoning,
-            agentFlowExecutedData: data?.agentFlowExecutedData,
-            action: data?.action,
-            artifacts: data?.artifacts,
-            type: 'apiMessage' as messageType,
-            feedback: null,
-            dateTime: new Date().toISOString(),
-          };
-          allMessages.push(newMessage);
-          addChatMessage(allMessages);
-          return allMessages;
-        });
-
-        updateMetadata(data, value);
-
-        setLoading(false);
-        setUserInput('');
-        setUploadedFiles([]);
-        scrollToBottom();
-      }
-      if (result.error) {
-        const error = result.error;
-        console.error(error);
-        if (typeof error === 'object') {
-          handleError(`Error: ${error?.message.replaceAll('Error:', ' ')}`);
-          return;
-        }
-        if (typeof error === 'string') {
-          handleError(error);
-          return;
-        }
-        handleError();
-        return;
-      }
-    }
+    fetchResponseFromEventStream(props.chatflowid, body);
 
     // Update last question to avoid saving base64 data to localStorage
     if (uploads && uploads.length > 0) {
@@ -1130,29 +948,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
     }
   };
 
-  const onSubmitResponse = (actionData: any, feedback = '', type = '') => {
-    let fbType = feedbackType();
-    if (type) {
-      fbType = type;
-    }
-    const question = feedback ? feedback : fbType.charAt(0).toUpperCase() + fbType.slice(1);
-    handleSubmit(question, undefined, {
-      type: fbType,
-      startNodeId: actionData?.nodeId,
-      feedback,
-    });
-  };
-
-  const handleSubmitFeedback = () => {
-    if (pendingActionData()) {
-      onSubmitResponse(pendingActionData(), feedback());
-      setOpenFeedbackDialog(false);
-      setFeedback('');
-      setPendingActionData(null);
-      setFeedbackType('');
-    }
-  };
-
   const handleActionClick = async (elem: any, action: IAction | undefined | null) => {
     setUserInput(elem.label);
     setMessages((data) => {
@@ -1165,19 +960,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
       addChatMessage(updated);
       return [...updated];
     });
-    if (elem.type.includes('agentflowv2')) {
-      const type = elem.type.includes('approve') ? 'proceed' : 'reject';
-      setFeedbackType(type);
-
-      if (action && action.data && action.data.input && action.data.input.humanInputEnableFeedback) {
-        setPendingActionData(action.data);
-        setOpenFeedbackDialog(true);
-      } else if (action) {
-        onSubmitResponse(action.data, '', type);
-      }
-    } else {
-      handleSubmit(elem.label, action);
-    }
+    handleSubmit(elem.label, action);
   };
 
   const clearChat = () => {
@@ -1272,7 +1055,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
                 messageId: message?.messageId,
                 message: message.message,
                 type: message.type,
-                rating: message.rating,
                 dateTime: message.dateTime,
               };
               if (message.sourceDocuments) chatHistory.sourceDocuments = message.sourceDocuments;
@@ -1303,8 +1085,8 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
       onRequest: props.onRequest,
     });
 
-    if (data) {
-      setIsChatFlowAvailableToStream(data?.isStreaming ?? false);
+    if (!data) {
+      handleError('Service unavailable !');
     }
 
     // Get the chatbotConfig
@@ -1382,10 +1164,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
           prompts.push(chatbotConfig.starterPrompts[key].prompt);
         });
         setStarterPrompts(prompts.filter((prompt) => prompt !== ''));
-      }
-      if (chatbotConfig.chatFeedback) {
-        const chatFeedbackStatus = chatbotConfig.chatFeedback.status;
-        setChatFeedbackStatus(chatFeedbackStatus);
       }
       if (chatbotConfig.uploads) {
         setUploadsConfig(chatbotConfig.uploads);
@@ -1849,10 +1627,8 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
                           apiHost={props.apiHost}
                           backgroundColor={props.botMessage?.backgroundColor}
                           textColor={props.botMessage?.textColor}
-                          feedbackColor={props.feedback?.color}
                           showAvatar={props.botMessage?.showAvatar}
                           avatarSrc={props.botMessage?.avatarSrc}
-                          chatFeedbackStatus={chatFeedbackStatus()}
                           fontSize={props.fontSize}
                           isLoading={loading() && index() === messages().length - 1}
                           showAgentMessages={props.showAgentMessages}
@@ -2036,19 +1812,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
           denyButtonText={props.disclaimer?.denyButtonText}
           onDeny={props.closeBot}
           isFullPage={props.isFullPage}
-        />
-      )}
-
-      {openFeedbackDialog() && (
-        <FeedbackDialog
-          isOpen={openFeedbackDialog()}
-          onClose={() => {
-            setOpenFeedbackDialog(false);
-            handleSubmitFeedback();
-          }}
-          onSubmit={handleSubmitFeedback}
-          feedbackValue={feedback()}
-          setFeedbackValue={(value) => setFeedback(value)}
         />
       )}
     </>
