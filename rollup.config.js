@@ -37,7 +37,6 @@ const indexConfig = {
       minimize: true,
       inject: false,
     }),
-    typescript(),
     typescriptPaths({ preserveExtensions: true }),
     terser({ output: { comments: false } }),
     ...(isDev
@@ -60,6 +59,7 @@ const configs = [
     ...indexConfig,
     input: './src/web.ts',
     output: {
+      inlineDynamicImports: true,
       file: 'dist/web.js',
       format: 'es',
     },
@@ -68,6 +68,7 @@ const configs = [
     ...indexConfig,
     input: './src/web.ts',
     output: {
+      inlineDynamicImports: true,
       file: 'dist/web.umd.js',
       format: 'umd',
       name: 'FlowiseEmbed',

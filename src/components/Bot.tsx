@@ -36,6 +36,7 @@ import { removeLocalStorageChatHistory, getLocalStorageChatflow, setLocalStorage
 import { cloneDeep } from 'lodash';
 import { FollowUpPromptBubble } from '@/components/bubbles/FollowUpPromptBubble';
 import { fetchEventSource, EventStreamContentType } from '@microsoft/fetch-event-source';
+import { ArrowOutwardIcon } from 'filigran-icon';
 
 export type FileEvent<T = EventTarget> = {
   target: T;
@@ -1798,7 +1799,16 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
                 <span class="px-3 whitespace-pre-wrap font-semibold max-w-full">{props.title}</span>
               </Show>
               <div style={{ flex: 1 }} />
-              <div>Test Adrien</div>
+              <ArrowOutwardIcon onClick={() => {}} />
+              <DeleteButton
+                sendButtonColor={props.bubbleTextColor}
+                type="button"
+                isDisabled={messages().length === 1}
+                class="my-2 ml-2"
+                on:click={clearChat}
+              >
+                <span style={{ 'font-family': 'Poppins, sans-serif' }}>Clear</span>
+              </DeleteButton>
             </div>
           ) : null}
           <div class="flex flex-col w-full h-full justify-start z-0">
