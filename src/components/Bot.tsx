@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, mergeProps, on, onMount, Show } from 'solid-js';
 import { v4 as uuidv4 } from 'uuid';
-import { createAttachmentWithFormData, getChatbotConfig, IncomingInput, isStreamAvailableQuery } from '@/queries/sendMessageQuery';
+import { IncomingInput, isStreamAvailableQuery } from '@/queries/sendMessageQuery';
 import { TextInput } from './inputs/textInput';
 import { GuestBubble } from './bubbles/GuestBubble';
 import { BotBubble } from './bubbles/BotBubble';
@@ -16,7 +16,6 @@ import { FilePreview } from '@/components/inputs/textInput/components/FilePrevie
 import { CircleDotIcon, SparklesIcon, TrashIcon } from './icons';
 import { CancelButton } from './buttons/CancelButton';
 import { cancelAudioRecording, startAudioRecording, stopAudioRecording } from '@/utils/audioRecording';
-import { LeadCaptureBubble } from '@/components/bubbles/LeadCaptureBubble';
 import { getCookie, getLocalStorageChatflow, removeLocalStorageChatHistory, setCookie, setLocalStorageChatflow } from '@/utils';
 import { cloneDeep } from 'lodash';
 import { FollowUpPromptBubble } from '@/components/bubbles/FollowUpPromptBubble';
@@ -124,8 +123,7 @@ export type observersConfigType = Record<'observeUserInput' | 'observeLoading' |
 export type BotProps = {
   expanded?: boolean;
   onExpand?: () => void;
-  chatflowid: string;
-  apiHost?: string;
+  agenticUrl: string;
   onRequest?: (request: RequestInit) => Promise<void>;
   chatflowConfig?: Record<string, unknown>;
   backgroundColor?: string;
@@ -501,7 +499,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
       }
       return item;
     });
-    setLocalStorageChatflow(props.chatflowid, chatId(), { chatHistory: messages });
+    setLocalStorageChatflow(props.agenticUrl, chatId(), { chatHistory: messages });
   };
 
   // Define the audioRef
@@ -704,11 +702,11 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
     }
   };
 
-  const fetchResponseFromEventStream = async (chatflowid: string, params: any) => {
+  const fetchResponseFromEventStream = async (agenticUrl: string, params: any) => {
     const chatId = params.chatId;
     const input = params.question;
     params.streaming = true;
-    fetchEventSource(`${props.apiHost}/api/v1/prediction/${chatflowid}`, {
+    fetchEventSource(agenticUrl, {
       openWhenHidden: true,
       method: 'POST',
       body: JSON.stringify(params),
@@ -778,7 +776,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
             closeResponse();
             break;
           case 'end':
-            setLocalStorageChatflow(chatflowid, chatId);
+            setLocalStorageChatflow(agenticUrl, chatId);
             closeResponse();
             break;
         }
@@ -816,50 +814,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
     });
   };
 
-  const handleFileUploads = async (uploads: IUploads) => {
-    if (!uploadedFiles().length) return uploads;
-
-    if (fullFileUpload()) {
-      const filesWithFullUploadType = uploadedFiles().filter((file) => file.type === 'file:full');
-
-      if (filesWithFullUploadType.length > 0) {
-        const formData = new FormData();
-        for (const file of filesWithFullUploadType) {
-          formData.append('files', file.file);
-        }
-        formData.append('chatId', chatId());
-
-        const response = await createAttachmentWithFormData({
-          chatflowid: props.chatflowid,
-          apiHost: props.apiHost,
-          formData: formData,
-        });
-
-        if (!response.data) {
-          throw new Error('Unable to upload documents');
-        } else {
-          const data = response.data as any;
-          for (const extractedFileData of data) {
-            const content = extractedFileData.content;
-            const fileName = extractedFileData.name;
-
-            // find matching name in previews and replace data with content
-            const uploadIndex = uploads.findIndex((upload) => upload.name === fileName);
-            if (uploadIndex !== -1) {
-              uploads[uploadIndex] = {
-                ...uploads[uploadIndex],
-                data: content,
-                name: fileName,
-                type: 'file:full',
-              };
-            }
-          }
-        }
-      }
-    }
-    return uploads;
-  };
-
   // Handle form submission
   const handleSubmit = async (value: string | object, action?: IAction | undefined | null, humanInput?: any) => {
     if (typeof value === 'string' && value.trim() === '') {
@@ -880,26 +834,10 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
     setLoading(true);
     scrollToBottom();
 
-    let uploads: IUploads = previews().map((item) => {
-      return {
-        data: item.data,
-        type: item.type,
-        name: item.name,
-        mime: item.mime,
-      };
-    });
-
-    try {
-      uploads = await handleFileUploads(uploads);
-    } catch (error) {
-      handleError('Unable to upload documents', true);
-      return;
-    }
-
     clearPreviews();
 
     setMessages((prevMessages) => {
-      const messages: MessageType[] = [...prevMessages, { message: value as string, type: 'userMessage', fileUploads: uploads }];
+      const messages: MessageType[] = [...prevMessages, { message: value as string, type: 'userMessage' }];
       addChatMessage(messages);
       return messages;
     });
@@ -914,8 +852,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
       delete body.question;
     }
 
-    if (uploads && uploads.length > 0) body.uploads = uploads;
-
     if (props.chatflowConfig) body.overrideConfig = props.chatflowConfig;
 
     if (leadEmail()) body.leadEmail = leadEmail();
@@ -924,28 +860,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
 
     if (humanInput) body.humanInput = humanInput;
 
-    fetchResponseFromEventStream(props.chatflowid, body);
-
-    // Update last question to avoid saving base64 data to localStorage
-    if (uploads && uploads.length > 0) {
-      setMessages((data) => {
-        const messages = data.map((item, i) => {
-          if (i === data.length - 2 && item.type === 'userMessage') {
-            if (item.fileUploads) {
-              const fileUploads = item?.fileUploads.map((file) => ({
-                type: file.type,
-                name: file.name,
-                mime: file.mime,
-              }));
-              return { ...item, fileUploads };
-            }
-          }
-          return item;
-        });
-        addChatMessage(messages);
-        return [...messages];
-      });
-    }
+    fetchResponseFromEventStream(props.agenticUrl, body);
   };
 
   const handleActionClick = async (elem: any, action: IAction | undefined | null) => {
@@ -965,7 +880,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
 
   const clearChat = () => {
     try {
-      removeLocalStorageChatHistory(props.chatflowid);
+      removeLocalStorageChatHistory(props.agenticUrl);
       setChatId(
         (props.chatflowConfig?.vars as any)?.customerId ? `${(props.chatflowConfig?.vars as any).customerId.toString()}+${uuidv4()}` : uuidv4(),
       );
@@ -976,7 +891,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
           type: 'apiMessage',
         },
       ];
-      if (leadsConfig()?.status && !getLocalStorageChatflow(props.chatflowid)?.lead) {
+      if (leadsConfig()?.status && !getLocalStorageChatflow(props.agenticUrl)?.lead) {
         messages.push({ message: '', type: 'leadCaptureMessage' });
       }
       setMessages(messages);
@@ -1040,7 +955,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
       setDisclaimerPopupOpen(false);
     }
 
-    const chatMessage = getLocalStorageChatflow(props.chatflowid);
+    const chatMessage = getLocalStorageChatflow(props.agenticUrl);
     if (chatMessage && Object.keys(chatMessage).length) {
       if (chatMessage.chatId) setChatId(chatMessage.chatId);
       const savedLead = chatMessage.lead;
@@ -1080,109 +995,12 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
 
     // Determine if particular chatflow is available for streaming
     const { data } = await isStreamAvailableQuery({
-      chatflowid: props.chatflowid,
-      apiHost: props.apiHost,
+      agenticUrl: props.agenticUrl,
       onRequest: props.onRequest,
     });
 
     if (!data) {
       handleError('Service unavailable !');
-    }
-
-    // Get the chatbotConfig
-    const result = await getChatbotConfig({
-      chatflowid: props.chatflowid,
-      apiHost: props.apiHost,
-      onRequest: props.onRequest,
-    });
-
-    if (result.data) {
-      const chatbotConfig = result.data;
-
-      if (chatbotConfig.flowData) {
-        const nodes = JSON.parse(chatbotConfig.flowData).nodes ?? [];
-        const startNode = nodes.find((node: any) => node.data.name === 'startAgentflow');
-        if (startNode) {
-          const startInputType = startNode.data.inputs?.startInputType;
-          setStartInputType(startInputType);
-
-          const formInputTypes = startNode.data.inputs?.formInputTypes;
-          /* example:
-          "formInputTypes": [
-              {
-                "type": "string",
-                "label": "From",
-                "name": "from",
-                "addOptions": ""
-              },
-              {
-                "type": "number",
-                "label": "Subject",
-                "name": "subject",
-                "addOptions": ""
-              },
-              {
-                "type": "boolean",
-                "label": "Body",
-                "name": "body",
-                "addOptions": ""
-              },
-              {
-                "type": "options",
-                "label": "Choices",
-                "name": "choices",
-                "addOptions": [
-                  {
-                    "option": "choice 1"
-                  },
-                  {
-                    "option": "choice 2"
-                  }
-                ]
-              }
-            ]
-          */
-          if (startInputType === 'formInput' && formInputTypes && formInputTypes.length > 0) {
-            for (const formInputType of formInputTypes) {
-              if (formInputType.type === 'options') {
-                formInputType.options = formInputType.addOptions.map((option: any) => ({
-                  label: option.option,
-                  name: option.option,
-                }));
-              }
-            }
-            setFormInputParams(formInputTypes);
-            setFormTitle(startNode.data.inputs?.formTitle);
-            setFormDescription(startNode.data.inputs?.formDescription);
-          }
-        }
-      }
-
-      if ((!props.starterPrompts || props.starterPrompts?.length === 0) && chatbotConfig.starterPrompts) {
-        const prompts: string[] = [];
-        Object.getOwnPropertyNames(chatbotConfig.starterPrompts).forEach((key) => {
-          prompts.push(chatbotConfig.starterPrompts[key].prompt);
-        });
-        setStarterPrompts(prompts.filter((prompt) => prompt !== ''));
-      }
-      if (chatbotConfig.uploads) {
-        setUploadsConfig(chatbotConfig.uploads);
-      }
-      if (chatbotConfig.leads) {
-        setLeadsConfig(chatbotConfig.leads);
-        if (chatbotConfig.leads?.status && !getLocalStorageChatflow(props.chatflowid)?.lead) {
-          setMessages((prevMessages) => [...prevMessages, { message: '', type: 'leadCaptureMessage' }]);
-        }
-      }
-      if (chatbotConfig.followUpPrompts) {
-        setFollowUpPromptsStatus(chatbotConfig.followUpPrompts.status);
-      }
-      if (chatbotConfig.fullFileUpload) {
-        setFullFileUpload(chatbotConfig.fullFileUpload.status);
-        if (chatbotConfig.fullFileUpload?.allowedUploadFileTypes) {
-          setFullFileUploadAllowedTypes(chatbotConfig.fullFileUpload?.allowedUploadFileTypes);
-        }
-      }
     }
 
     // eslint-disable-next-line solid/reactivity
@@ -1453,7 +1271,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
     const messagesArray = messages();
     const disabled =
       loading() ||
-      !props.chatflowid ||
+      !props.agenticUrl ||
       (leadsConfig()?.status && !isLeadSaved()) ||
       (messagesArray[messagesArray.length - 1].action && Object.keys(messagesArray[messagesArray.length - 1].action as any).length > 0);
     if (disabled) {
@@ -1607,8 +1425,7 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
                       {message.type === 'userMessage' && (
                         <GuestBubble
                           message={message}
-                          apiHost={props.apiHost}
-                          chatflowid={props.chatflowid}
+                          agenticUrl={props.agenticUrl}
                           chatId={chatId()}
                           backgroundColor={props.userMessage?.backgroundColor}
                           textColor={props.userMessage?.textColor}
@@ -1622,9 +1439,8 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
                         <BotBubble
                           message={message}
                           fileAnnotations={message.fileAnnotations}
-                          chatflowid={props.chatflowid}
                           chatId={chatId()}
-                          apiHost={props.apiHost}
+                          agenticUrl={props.agenticUrl}
                           backgroundColor={props.botMessage?.backgroundColor}
                           textColor={props.botMessage?.textColor}
                           showAvatar={props.botMessage?.showAvatar}
@@ -1640,24 +1456,6 @@ export const Bot = (botProps: BotProps & { class?: string }) => {
                           }}
                           dateTimeToggle={props.dateTimeToggle}
                           renderHTML={props.renderHTML}
-                        />
-                      )}
-                      {message.type === 'leadCaptureMessage' && leadsConfig()?.status && !getLocalStorageChatflow(props.chatflowid)?.lead && (
-                        <LeadCaptureBubble
-                          message={message}
-                          chatflowid={props.chatflowid}
-                          chatId={chatId()}
-                          apiHost={props.apiHost}
-                          backgroundColor={props.botMessage?.backgroundColor}
-                          textColor={props.botMessage?.textColor}
-                          fontSize={props.fontSize}
-                          showAvatar={props.botMessage?.showAvatar}
-                          avatarSrc={props.botMessage?.avatarSrc}
-                          leadsConfig={leadsConfig()}
-                          sendButtonColor={props.textInput?.sendButtonColor}
-                          isLeadSaved={isLeadSaved()}
-                          setIsLeadSaved={setIsLeadSaved}
-                          setLeadEmail={setLeadEmail}
                         />
                       )}
                       {message.type === 'userMessage' && loading() && index() === messages().length - 1 && <LoadingBubble />}

@@ -81,9 +81,8 @@ export const Full = (props: FullProps, { element }: { element: HTMLElement }) =>
             fontSize={props.theme?.chatWindow?.fontSize}
             footer={props.theme?.chatWindow?.footer}
             starterPrompts={props.theme?.chatWindow?.starterPrompts}
-            chatflowid={props.chatflowid}
             chatflowConfig={props.chatflowConfig}
-            apiHost={props.apiHost}
+            agenticUrl={props.agenticUrl}
             onRequest={props.onRequest}
             isFullPage={true}
             observersConfig={props.observersConfig}

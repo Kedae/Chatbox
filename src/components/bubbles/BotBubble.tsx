@@ -1,7 +1,6 @@
 import { createEffect, For, onMount, Show } from 'solid-js';
 import { Avatar } from '../avatars/Avatar';
 import { Marked } from '@ts-stack/markdown';
-import { sendFileDownloadQuery } from '@/queries/sendMessageQuery';
 import { FileUpload, IAction, MessageType } from '../Bot';
 import { AgentReasoningBubble } from './AgentReasoningBubble';
 import { TickIcon, XIcon } from '../icons';
@@ -11,9 +10,8 @@ import { WorkflowTreeView } from '../treeview/WorkflowTreeView';
 
 type Props = {
   message: MessageType;
-  chatflowid: string;
+  agenticUrl: string;
   chatId: string;
-  apiHost?: string;
   onRequest?: (request: RequestInit) => Promise<void>;
   fileAnnotations?: any;
   showAvatar?: boolean;
@@ -67,44 +65,6 @@ export const BotBubble = (props: Props) => {
       el.querySelectorAll('a').forEach((link) => {
         link.target = '_blank';
       });
-
-      if (props.fileAnnotations && props.fileAnnotations.length) {
-        for (const annotations of props.fileAnnotations) {
-          const button = document.createElement('button');
-          button.textContent = annotations.fileName;
-          button.className =
-            'py-2 px-4 mb-2 justify-center font-semibold text-white focus:outline-none flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:brightness-100 transition-all filter hover:brightness-90 active:brightness-75 file-annotation-button';
-          button.addEventListener('click', function () {
-            downloadFile(annotations);
-          });
-          const svgContainer = document.createElement('div');
-          svgContainer.className = 'ml-2';
-          svgContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-download" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="#ffffff" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" /><path d="M7 11l5 5l5 -5" /><path d="M12 4l0 12" /></svg>`;
-
-          button.appendChild(svgContainer);
-          el.appendChild(button);
-        }
-      }
-    }
-  };
-
-  const downloadFile = async (fileAnnotation: any) => {
-    try {
-      const response = await sendFileDownloadQuery({
-        apiHost: props.apiHost,
-        body: { fileName: fileAnnotation.fileName, chatflowId: props.chatflowid, chatId: props.chatId } as any,
-        onRequest: props.onRequest,
-      });
-      const blob = new Blob([response.data]);
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = fileAnnotation.fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error) {
-      console.error('Download failed:', error);
     }
   };
 
@@ -145,75 +105,6 @@ export const BotBubble = (props: Props) => {
     }
   });
 
-  const renderArtifacts = (item: Partial<FileUpload>) => {
-    // Instead of onMount, we'll use a callback ref to apply styles
-    const setArtifactRef = (el: HTMLSpanElement) => {
-      if (el) {
-        const textColor = props.textColor ?? defaultTextColor;
-        // Apply textColor to all elements except code blocks
-        el.querySelectorAll('a, h1, h2, h3, h4, h5, h6, strong, em, blockquote, li').forEach((element) => {
-          (element as HTMLElement).style.color = textColor;
-        });
-
-        // Code blocks (with pre) get white text
-        el.querySelectorAll('pre').forEach((element) => {
-          (element as HTMLElement).style.color = '#FFFFFF';
-          // Also ensure any code elements inside pre have white text
-          element.querySelectorAll('code').forEach((codeElement) => {
-            (codeElement as HTMLElement).style.color = '#FFFFFF';
-          });
-        });
-
-        // Inline code (not in pre) gets green text
-        el.querySelectorAll('code:not(pre code)').forEach((element) => {
-          (element as HTMLElement).style.color = '#4CAF50'; // Green color
-        });
-
-        el.querySelectorAll('a').forEach((link) => {
-          link.target = '_blank';
-        });
-      }
-    };
-
-    return (
-      <>
-        <Show when={item.type === 'png' || item.type === 'jpeg'}>
-          <div class="flex items-center justify-center p-0 m-0">
-            <img
-              class="w-full h-full bg-cover"
-              src={(() => {
-                const isFileStorage = typeof item.data === 'string' && item.data.startsWith('FILE-STORAGE::');
-                return isFileStorage
-                  ? `${props.apiHost}/api/v1/get-upload-file?chatflowId=${props.chatflowid}&chatId=${props.chatId}&fileName=${(
-                      item.data as string
-                    ).replace('FILE-STORAGE::', '')}`
-                  : (item.data as string);
-              })()}
-            />
-          </div>
-        </Show>
-        <Show when={item.type === 'html'}>
-          <div class="mt-2">
-            <div innerHTML={item.data as string} />
-          </div>
-        </Show>
-        <Show when={item.type !== 'png' && item.type !== 'jpeg' && item.type !== 'html'}>
-          <span
-            ref={setArtifactRef}
-            innerHTML={Marked.parse(item.data as string)}
-            class="prose"
-            style={{
-              'background-color': props.backgroundColor ?? defaultBackgroundColor,
-              color: props.textColor ?? defaultTextColor,
-              'border-radius': '6px',
-              'font-size': props.fontSize ? `${props.fontSize}px` : `${defaultFontSize}px`,
-            }}
-          />
-        </Show>
-      </>
-    );
-  };
-
   return (
     <div>
       <div class="flex flex-row justify-start mb-2 items-start host-container" style={{ 'margin-right': '50px' }}>
@@ -248,8 +139,7 @@ export const BotBubble = (props: Props) => {
                       backgroundColor={props.backgroundColor}
                       textColor={props.textColor}
                       fontSize={props.fontSize}
-                      apiHost={props.apiHost}
-                      chatflowid={props.chatflowid}
+                      agenticUrl={props.agenticUrl}
                       chatId={props.chatId}
                       renderHTML={props.renderHTML}
                     />
@@ -257,15 +147,6 @@ export const BotBubble = (props: Props) => {
                 }}
               </For>
             </details>
-          )}
-          {props.message.artifacts && props.message.artifacts.length > 0 && (
-            <div class="flex flex-row items-start flex-wrap w-full gap-2">
-              <For each={props.message.artifacts}>
-                {(item) => {
-                  return item !== null ? <>{renderArtifacts(item)}</> : null;
-                }}
-              </For>
-            </div>
           )}
           {props.message.message && (
             <span
